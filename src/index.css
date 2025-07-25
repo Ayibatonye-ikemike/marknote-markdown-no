@@ -73,7 +73,7 @@
 }
 
 .markdown-content {
-  @apply prose prose-gray max-w-none;
+  @apply max-w-none text-foreground;
   line-height: 1.6;
 }
 
