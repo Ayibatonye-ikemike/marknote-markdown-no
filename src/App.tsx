@@ -542,31 +542,31 @@ function App() {
                         variant="outline"
                         size="sm"
                         onClick={() => setIsEditing(!isEditing)}
-                      >
-                        <PencilSimple className="h-4 w-4 mr-2" />
-                        {isEditing ? 'Preview' : 'Edit'}
-                      </Button>
+                  </div>
+                  
+                  {/* Tags Management */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Tag className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Tags</span>
                       
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            <Export className="h-4 w-4 mr-2" />
-                            Export
+                      <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Plus className="h-3 w-3" />
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => exportToPDF(selectedNote)}>
-                            <FilePdf className="h-4 w-4 mr-2" />
-                            Export as PDF
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => exportToHTML(selectedNote)}>
-                            <FileHtml className="h-4 w-4 mr-2" />
-                            Export as HTML
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => exportToText(selectedNote)}>
-                            <FileText className="h-4 w-4 mr-2" />
-                            Export as Text
-                          </DropdownMenuItem>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-3">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Input
+                                placeholder="Add new tag..."
+                                value={tagInput}
+                                onChange={(e) => setTagInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    if (tagInput.trim()) {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
