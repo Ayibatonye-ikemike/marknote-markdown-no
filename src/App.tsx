@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useKV } from '@github/spark/hooks'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,7 +6,10 @@ import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Plus, MagnifyingGlass, Trash, PencilSimple } from '@phosphor-icons/react'
+import { Badge } from '@/components/ui/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Plus, MagnifyingGlass, Trash, PencilSimple, Tag, X, Check } from '@phosphor-icons/react'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { marked } from 'marked'
 import { toast } from 'sonner'
@@ -15,6 +18,7 @@ interface Note {
   id: string
   title: string
   content: string
+  tags: string[]
   createdAt: number
   updatedAt: number
 }
@@ -23,22 +27,60 @@ function App() {
   const [notes, setNotes] = useKV<Note[]>('notes', [])
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [isEditing, setIsEditing] = useState(false)
+  const [tagInput, setTagInput] = useState('')
+  const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false)
+
+  // Migrate existing notes to include tags if they don't have them
+  useEffect(() => {
+    const needsMigration = notes.some(note => !note.hasOwnProperty('tags'))
+    if (needsMigration) {
+      setNotes(currentNotes => 
+        currentNotes.map(note => ({
+          ...note,
+          tags: note.tags || []
+        }))
+      )
+    }
+  }, [notes, setNotes])
 
   const selectedNote = useMemo(() => 
     notes.find(note => note.id === selectedNoteId) || null, 
     [notes, selectedNoteId]
   )
 
+  // Get all unique tags from all notes
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    notes.forEach(note => {
+      note.tags?.forEach(tag => tagSet.add(tag))
+    })
+    return Array.from(tagSet).sort()
+  }, [notes])
+
   const filteredNotes = useMemo(() => {
-    if (!searchQuery.trim()) return notes
+    let filtered = notes
     
-    const query = searchQuery.toLowerCase()
-    return notes.filter(note => 
-      note.title.toLowerCase().includes(query) || 
-      note.content.toLowerCase().includes(query)
-    )
-  }, [notes, searchQuery])
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(note => 
+        note.title.toLowerCase().includes(query) || 
+        note.content.toLowerCase().includes(query) ||
+        note.tags?.some(tag => tag.toLowerCase().includes(query))
+      )
+    }
+    
+    // Filter by selected tags
+    if (selectedTags.length > 0) {
+      filtered = filtered.filter(note => 
+        selectedTags.every(tag => note.tags?.includes(tag))
+      )
+    }
+    
+    return filtered
+  }, [notes, searchQuery, selectedTags])
 
   const createNote = useCallback(() => {
     const now = Date.now()
@@ -46,6 +88,7 @@ function App() {
       id: `note-${now}`,
       title: 'Untitled Note',
       content: '',
+      tags: [],
       createdAt: now,
       updatedAt: now
     }
@@ -56,7 +99,7 @@ function App() {
     toast.success('New note created')
   }, [setNotes])
 
-  const updateNote = useCallback((id: string, updates: Partial<Pick<Note, 'title' | 'content'>>) => {
+  const updateNote = useCallback((id: string, updates: Partial<Pick<Note, 'title' | 'content' | 'tags'>>) => {
     setNotes(currentNotes => 
       currentNotes.map(note => 
         note.id === id 
@@ -65,6 +108,51 @@ function App() {
       )
     )
   }, [setNotes])
+
+  const addTagToNote = useCallback((noteId: string, tag: string) => {
+    const trimmedTag = tag.trim()
+    if (!trimmedTag) return
+    
+    setNotes(currentNotes => 
+      currentNotes.map(note => 
+        note.id === noteId 
+          ? { 
+              ...note, 
+              tags: note.tags?.includes(trimmedTag) 
+                ? note.tags 
+                : [...(note.tags || []), trimmedTag],
+              updatedAt: Date.now() 
+            }
+          : note
+      )
+    )
+  }, [setNotes])
+
+  const removeTagFromNote = useCallback((noteId: string, tagToRemove: string) => {
+    setNotes(currentNotes => 
+      currentNotes.map(note => 
+        note.id === noteId 
+          ? { 
+              ...note, 
+              tags: note.tags?.filter(tag => tag !== tagToRemove) || [],
+              updatedAt: Date.now() 
+            }
+          : note
+      )
+    )
+  }, [setNotes])
+
+  const toggleTagFilter = useCallback((tag: string) => {
+    setSelectedTags(current => 
+      current.includes(tag)
+        ? current.filter(t => t !== tag)
+        : [...current, tag]
+    )
+  }, [])
+
+  const clearTagFilters = useCallback(() => {
+    setSelectedTags([])
+  }, [])
 
   const deleteNote = useCallback((id: string) => {
     setNotes(currentNotes => currentNotes.filter(note => note.id !== id))
@@ -104,14 +192,50 @@ function App() {
                 </Button>
               </div>
               
-              <div className="relative">
-                <MagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search notes..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+              <div className="space-y-3">
+                <div className="relative">
+                  <MagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search notes..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                
+                {/* Tag Filters */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Tags</span>
+                    {selectedTags.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearTagFilters}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {allTags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {allTags.map(tag => (
+                        <Badge
+                          key={tag}
+                          variant={selectedTags.includes(tag) ? "default" : "secondary"}
+                          className="cursor-pointer text-xs"
+                          onClick={() => toggleTagFilter(tag)}
+                        >
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No tags yet</p>
+                  )}
+                </div>
               </div>
             </div>
             
@@ -119,9 +243,12 @@ function App() {
               <div className="p-3 space-y-2">
                 {filteredNotes.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    {searchQuery ? 'No notes found' : 'No notes yet'}
+                    {searchQuery || selectedTags.length > 0 ? 'No notes found' : 'No notes yet'}
                     <div className="text-sm mt-1">
-                      {searchQuery ? 'Try a different search term' : 'Create your first note to get started'}
+                      {searchQuery || selectedTags.length > 0 
+                        ? 'Try a different search term or clear tag filters' 
+                        : 'Create your first note to get started'
+                      }
                     </div>
                   </div>
                 ) : (
@@ -144,6 +271,23 @@ function App() {
                           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                             {note.content || 'No content'}
                           </p>
+                          
+                          {/* Note Tags */}
+                          {note.tags && note.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {note.tags.slice(0, 3).map(tag => (
+                                <Badge key={tag} variant="outline" className="text-xs">
+                                  {tag}
+                                </Badge>
+                              ))}
+                              {note.tags.length > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{note.tags.length - 3}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                          
                           <p className="text-xs text-muted-foreground mt-2">
                             {formatDate(note.updatedAt)}
                           </p>
@@ -193,7 +337,7 @@ function App() {
           <div className="h-full flex flex-col">
             {selectedNote ? (
               <>
-                <div className="p-6 border-b border-border">
+                <div className="p-6 border-b border-border space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       {isEditing ? (
@@ -221,6 +365,103 @@ function App() {
                       <PencilSimple className="h-4 w-4 mr-2" />
                       {isEditing ? 'Preview' : 'Edit'}
                     </Button>
+                  </div>
+                  
+                  {/* Tags Management */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Tag className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Tags</span>
+                      
+                      <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-3">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Input
+                                placeholder="Add new tag..."
+                                value={tagInput}
+                                onChange={(e) => setTagInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    if (tagInput.trim()) {
+                                      addTagToNote(selectedNote.id, tagInput.trim())
+                                      setTagInput('')
+                                      setIsTagPopoverOpen(false)
+                                    }
+                                  }
+                                }}
+                              />
+                              <Button 
+                                size="sm" 
+                                className="w-full"
+                                onClick={() => {
+                                  if (tagInput.trim()) {
+                                    addTagToNote(selectedNote.id, tagInput.trim())
+                                    setTagInput('')
+                                    setIsTagPopoverOpen(false)
+                                  }
+                                }}
+                              >
+                                Add Tag
+                              </Button>
+                            </div>
+                            
+                            {allTags.length > 0 && (
+                              <>
+                                <Separator />
+                                <div className="space-y-1">
+                                  <p className="text-xs text-muted-foreground">Existing tags:</p>
+                                  <div className="max-h-32 overflow-y-auto">
+                                    {allTags
+                                      .filter(tag => !selectedNote.tags?.includes(tag))
+                                      .map(tag => (
+                                        <div
+                                          key={tag}
+                                          className="flex items-center justify-between p-1 hover:bg-accent rounded cursor-pointer"
+                                          onClick={() => {
+                                            addTagToNote(selectedNote.id, tag)
+                                            setIsTagPopoverOpen(false)
+                                          }}
+                                        >
+                                          <span className="text-sm">{tag}</span>
+                                          <Plus className="h-3 w-3" />
+                                        </div>
+                                      ))}
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    
+                    {/* Display Current Tags */}
+                    <div className="flex flex-wrap gap-1">
+                      {selectedNote.tags && selectedNote.tags.length > 0 ? (
+                        selectedNote.tags.map(tag => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-3 w-3 p-0 ml-1 hover:bg-destructive hover:text-destructive-foreground"
+                              onClick={() => removeTagFromNote(selectedNote.id, tag)}
+                            >
+                              <X className="h-2 w-2" />
+                            </Button>
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No tags</span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 

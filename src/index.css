@@ -112,3 +112,10 @@
 .markdown-content blockquote {
   @apply border-l-4 border-border pl-4 italic mb-4;
 }
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
