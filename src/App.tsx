@@ -9,10 +9,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Plus, MagnifyingGlass, Trash, PencilSimple, Tag, X, Check } from '@phosphor-icons/react'
+import { Plus, MagnifyingGlass, Trash, PencilSimple, Tag, X, Check, Export, FilePdf, FileHtml, FileText } from '@phosphor-icons/react'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { marked } from 'marked'
 import { toast } from 'sonner'
+import jsPDF from 'jspdf'
 
 interface Note {
   id: string
@@ -174,6 +176,184 @@ function App() {
   const renderMarkdown = (content: string) => {
     return { __html: marked(content) }
   }
+
+  const exportToPDF = useCallback((note: Note) => {
+    try {
+      const pdf = new jsPDF()
+      let yPosition = 20
+      
+      // Add title
+      pdf.setFontSize(20)
+      pdf.setFont(undefined, 'bold')
+      const titleLines = pdf.splitTextToSize(note.title || 'Untitled Note', 170)
+      pdf.text(titleLines, 20, yPosition)
+      yPosition += titleLines.length * 8 + 10
+      
+      // Add metadata
+      pdf.setFontSize(10)
+      pdf.setFont(undefined, 'normal')
+      pdf.text(`Created: ${formatDate(note.createdAt)}`, 20, yPosition)
+      yPosition += 7
+      pdf.text(`Updated: ${formatDate(note.updatedAt)}`, 20, yPosition)
+      yPosition += 7
+      
+      // Add tags if they exist
+      if (note.tags && note.tags.length > 0) {
+        pdf.text(`Tags: ${note.tags.join(', ')}`, 20, yPosition)
+        yPosition += 10
+      }
+      
+      // Add separator line
+      yPosition += 5
+      pdf.setLineWidth(0.5)
+      pdf.line(20, yPosition, 190, yPosition)
+      yPosition += 15
+      
+      // Add content
+      pdf.setFontSize(12)
+      pdf.setFont(undefined, 'normal')
+      const content = note.content || 'No content'
+      const lines = pdf.splitTextToSize(content, 170)
+      
+      // Handle page breaks for long content
+      for (let i = 0; i < lines.length; i++) {
+        if (yPosition > 270) { // Near bottom of page
+          pdf.addPage()
+          yPosition = 20
+        }
+        pdf.text(lines[i], 20, yPosition)
+        yPosition += 6
+      }
+      
+      // Save the PDF
+      const fileName = (note.title || 'note').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+      pdf.save(`${fileName}.pdf`)
+      toast.success('Note exported as PDF')
+    } catch (error) {
+      toast.error('Failed to export PDF')
+      console.error('PDF export error:', error)
+    }
+  }, [])
+
+  const exportToHTML = useCallback((note: Note) => {
+    try {
+      const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${note.title || 'Untitled Note'}</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 2rem; 
+            line-height: 1.6; 
+            color: #333;
+        }
+        .metadata { 
+            color: #666; 
+            font-size: 0.9em; 
+            margin-bottom: 2rem; 
+            padding-bottom: 1rem; 
+            border-bottom: 1px solid #eee; 
+        }
+        .tags { margin: 0.5rem 0; }
+        .tag { 
+            background: #f0f0f0; 
+            padding: 0.2rem 0.5rem; 
+            border-radius: 4px; 
+            font-size: 0.8em; 
+            margin-right: 0.5rem; 
+        }
+        h1, h2, h3, h4, h5, h6 { color: #2c3e50; }
+        code { 
+            background: #f8f9fa; 
+            padding: 0.2rem 0.4rem; 
+            border-radius: 3px; 
+            font-family: 'Monaco', 'Menlo', monospace; 
+        }
+        pre { 
+            background: #f8f9fa; 
+            padding: 1rem; 
+            border-radius: 5px; 
+            overflow-x: auto; 
+        }
+        blockquote { 
+            border-left: 4px solid #ddd; 
+            margin: 1rem 0; 
+            padding-left: 1rem; 
+            color: #666; 
+        }
+    </style>
+</head>
+<body>
+    <h1>${note.title || 'Untitled Note'}</h1>
+    <div class="metadata">
+        <div>Created: ${formatDate(note.createdAt)}</div>
+        <div>Updated: ${formatDate(note.updatedAt)}</div>
+        ${note.tags && note.tags.length > 0 ? `
+        <div class="tags">
+            Tags: ${note.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+        </div>
+        ` : ''}
+    </div>
+    <div class="content">
+        ${marked(note.content || '*No content*')}
+    </div>
+</body>
+</html>`
+
+      const blob = new Blob([htmlContent], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const fileName = (note.title || 'note').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+      a.download = `${fileName}.html`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      toast.success('Note exported as HTML')
+    } catch (error) {
+      toast.error('Failed to export HTML')
+      console.error('HTML export error:', error)
+    }
+  }, [])
+
+  const exportToText = useCallback((note: Note) => {
+    try {
+      let textContent = `${note.title || 'Untitled Note'}\n`
+      textContent += `${'='.repeat((note.title || 'Untitled Note').length)}\n\n`
+      textContent += `Created: ${formatDate(note.createdAt)}\n`
+      textContent += `Updated: ${formatDate(note.updatedAt)}\n`
+      
+      if (note.tags && note.tags.length > 0) {
+        textContent += `Tags: ${note.tags.join(', ')}\n`
+      }
+      
+      textContent += `\n${note.content || 'No content'}`
+
+      const blob = new Blob([textContent], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const fileName = (note.title || 'note').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+      a.download = `${fileName}.txt`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      toast.success('Note exported as text')
+    } catch (error) {
+      toast.error('Failed to export text')
+      console.error('Text export error:', error)
+    }
+  }, [])
 
   return (
     <div className="h-screen bg-background">
@@ -357,14 +537,39 @@ function App() {
                       </p>
                     </div>
                     
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsEditing(!isEditing)}
-                    >
-                      <PencilSimple className="h-4 w-4 mr-2" />
-                      {isEditing ? 'Preview' : 'Edit'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditing(!isEditing)}
+                      >
+                        <PencilSimple className="h-4 w-4 mr-2" />
+                        {isEditing ? 'Preview' : 'Edit'}
+                      </Button>
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Export className="h-4 w-4 mr-2" />
+                            Export
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => exportToPDF(selectedNote)}>
+                            <FilePdf className="h-4 w-4 mr-2" />
+                            Export as PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportToHTML(selectedNote)}>
+                            <FileHtml className="h-4 w-4 mr-2" />
+                            Export as HTML
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportToText(selectedNote)}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            Export as Text
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                   
                   {/* Tags Management */}

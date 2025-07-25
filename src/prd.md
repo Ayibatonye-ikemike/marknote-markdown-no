@@ -55,6 +55,12 @@
 - **Purpose**: Organize notes by topic, project, or category
 - **Success Criteria**: Tags are easy to add/remove, filtering is immediate
 
+### Export Functionality
+- **Multiple Export Formats**: Export notes as PDF, HTML, or plain text
+- **Formatted Output**: Preserve note structure and metadata in exports
+- **Purpose**: Share notes externally or create offline backups
+- **Success Criteria**: Exports maintain formatting and include all note data
+
 ### Visual Organization
 - **Two-Panel Layout**: Notes list and editor side-by-side
 - **Note Preview**: Quick preview of note content in list
@@ -113,6 +119,7 @@
 - Popover for tag management
 - Badges for tag display
 - Resizable panels for layout control
+- Dropdown menu for export options
 
 **Component Customization**: Minimal customization, relying on theme variables
 **Component States**: Clear hover, focus, and active states throughout
